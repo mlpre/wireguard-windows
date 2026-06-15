@@ -40,6 +40,9 @@ func parseIPCidr(s string) (netip.Prefix, error) {
 }
 
 func parseEndpoint(s string) (*Endpoint, error) {
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		return &Endpoint{Host: s, Port: 0}, nil
+	}
 	i := strings.LastIndexByte(s, ':')
 	if i < 0 {
 		return nil, &ParseError{l18n.Sprintf("Missing port from endpoint"), s}

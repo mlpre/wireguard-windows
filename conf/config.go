@@ -95,6 +95,9 @@ func (conf *Config) IntersectsWith(other *Config) bool {
 }
 
 func (e *Endpoint) String() string {
+    if strings.HasPrefix(e.Host, "http://") || strings.HasPrefix(e.Host, "https://") {
+        return e.Host
+    }
 	if strings.IndexByte(e.Host, ':') != -1 {
 		return fmt.Sprintf("[%s]:%d", e.Host, e.Port)
 	}

@@ -6,8 +6,13 @@
 package conf
 
 import (
+	"errors"
 	"log"
+	"net/http"
 	"net/netip"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -16,6 +21,39 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/services"
 )
+
+func resolveRedirect(hostUrl string) (host string, port uint16, err error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	response, err := client.Get(hostUrl)
+	if err != nil {
+		return "", 0, err
+	}
+	defer response.Body.Close()
+	location := response.Header.Get("Location")
+	if location == "" {
+		return "", 0, errors.New("No Location Header")
+	}
+	locationUrl, err := url.Parse(location)
+	if err != nil {
+		return "", 0, err
+	}
+	host = locationUrl.Hostname()
+	portString := locationUrl.Port()
+	if host == "" || portString == "" {
+		return "", 0, errors.New("Invalid Location URL")
+	}
+	portValue, err := strconv.Atoi(portString)
+	if err != nil {
+		return "", 0, err
+	}
+	host, err = resolveHostname(host)
+	return host, uint16(portValue), err
+}
 
 func resolveHostname(name string) (resolvedIPString string, err error) {
 	maxTries := 10
@@ -87,8 +125,13 @@ func (config *Config) ResolveEndpoints() error {
 		if config.Peers[i].Endpoint.IsEmpty() {
 			continue
 		}
+		host := config.Peers[i].Endpoint.Host
 		var err error
-		config.Peers[i].Endpoint.Host, err = resolveHostname(config.Peers[i].Endpoint.Host)
+		if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+			config.Peers[i].Endpoint.Host, config.Peers[i].Endpoint.Port, err = resolveRedirect(host)
+		} else {
+			config.Peers[i].Endpoint.Host, err = resolveHostname(host)
+		}
 		if err != nil {
 			return err
 		}
